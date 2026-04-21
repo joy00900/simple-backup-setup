@@ -21,14 +21,30 @@ const pool = new Pool({
   database: process.env.DB_NAME,
 });
 
-// Create table
-pool.query(`
-  CREATE TABLE IF NOT EXISTS items (
-    id SERIAL PRIMARY KEY,
-    name TEXT,
-    image TEXT
-  )
-`);
+// Retry connection logic
+let connectionAttempts = 0;
+const maxRetries = 10;
+
+const connectWithRetry = () => {
+  connectionAttempts++;
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS items (
+      id SERIAL PRIMARY KEY,
+      name TEXT,
+      image TEXT
+    )
+  `).catch(err => {
+    if (connectionAttempts < maxRetries) {
+      console.log(`Database connection failed. Retrying... (${connectionAttempts}/${maxRetries})`);
+      setTimeout(connectWithRetry, 2000);
+    } else {
+      console.error('Failed to connect to database after', maxRetries, 'attempts');
+      process.exit(1);
+    }
+  });
+};
+
+connectWithRetry();
 
 // Multer setup
 const storage = multer.diskStorage({
