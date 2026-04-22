@@ -3,10 +3,6 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { execSync } = require('child_process');
 const archiver = require('archiver');
-const { google } = require('googleapis');
-const { getGoogleDriveAuth } = require('./google-drive-auth');
-const { sendSuccessEmail, sendFailureEmail } = require('./email-alerts');
-const { sendSuccessNotification, sendFailureNotification } = require('./teams-alerts');
 
 const BACKUP_DIR = path.join(__dirname, '../backups');
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
@@ -96,41 +92,6 @@ async function createBackupArchive(dbBackupFile) {
   });
 }
 
-async function uploadToGoogleDrive(filePath) {
-  console.log(`[${new Date().toISOString()}] Uploading to Google Drive...`);
-  
-  try {
-    const auth = await getGoogleDriveAuth();
-    const drive = google.drive({ version: 'v3', auth });
-    
-    const fileMetadata = {
-      name: path.basename(filePath),
-      parents: [process.env.GOOGLE_DRIVE_FOLDER_ID || 'root']
-    };
-    
-    const media = {
-      mimeType: 'application/zip',
-      body: fs.createReadStream(filePath)
-    };
-    
-    const res = await drive.files.create({
-      resource: fileMetadata,
-      media: media,
-      fields: 'id, name, webViewLink'
-    });
-    
-    console.log(`[${new Date().toISOString()}] Successfully uploaded to Google Drive:`);
-    console.log(`  File ID: ${res.data.id}`);
-    console.log(`  Name: ${res.data.name}`);
-    console.log(`  Link: ${res.data.webViewLink}`);
-    
-    return res.data;
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] Google Drive upload failed:`, error.message);
-    throw error;
-  }
-}
-
 async function cleanupOldBackups() {
   console.log(`[${new Date().toISOString()}] Cleaning up backups older than 7 days...`);
   
@@ -157,7 +118,7 @@ async function cleanupOldBackups() {
 async function performBackup() {
   const startTime = Date.now();
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`[${new Date().toISOString()}] BACKUP PROCESS STARTED`);
+  console.log(`[${new Date().toISOString()}] BACKUP PROCESS STARTED (LOCAL MODE)`);
   console.log(`${'='.repeat(60)}\n`);
   
   try {
@@ -167,48 +128,40 @@ async function performBackup() {
     // Step 2: Create archive with db + uploads
     const archiveFile = await createBackupArchive(dbBackupFile);
     
-    // Step 3: Upload to Google Drive
-    const googleDriveInfo = await uploadToGoogleDrive(archiveFile);
-    
-    // Step 4: Cleanup old backups
+    // Step 3: Cleanup old backups
     await cleanupOldBackups();
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     
-    // Prepare backup info for alerts
-    const backupInfo = {
-      fileName: path.basename(archiveFile),
-      fileSize: fs.statSync(archiveFile).size,
-      duration: duration,
-      googleDriveId: googleDriveInfo.id,
-      googleDriveName: googleDriveInfo.name,
-      googleDriveLink: googleDriveInfo.webViewLink
-    };
-    
-    // Send success alerts
-    await Promise.all([
-      sendSuccessEmail(backupInfo),
-      sendSuccessNotification(backupInfo)
-    ]);
+    // Display summary
+    const fileSize = fs.statSync(archiveFile).size;
+    const fileSizeFormatted = formatFileSize(fileSize);
     
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`[${new Date().toISOString()}] BACKUP PROCESS COMPLETED (${duration}s)`);
+    console.log(`[${new Date().toISOString()}] BACKUP COMPLETED SUCCESSFULLY (${duration}s)`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`📁 Backup File: ${path.basename(archiveFile)}`);
+    console.log(`📊 File Size: ${fileSizeFormatted}`);
+    console.log(`💾 Location: ${BACKUP_DIR}`);
     console.log(`${'='.repeat(60)}\n`);
+    
   } catch (error) {
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     
-    // Send failure alerts
-    await Promise.all([
-      sendFailureEmail(error.message || String(error)),
-      sendFailureNotification(error.message || String(error))
-    ]);
-    
     console.error(`\n${'='.repeat(60)}`);
-    console.error(`[${new Date().toISOString()}] BACKUP PROCESS FAILED (${duration}s)`);
+    console.error(`[${new Date().toISOString()}] BACKUP FAILED (${duration}s)`);
     console.error(`Error: ${error.message}`);
     console.error(`${'='.repeat(60)}\n`);
     process.exit(1);
   }
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
 // Run backup if called directly
