@@ -10,6 +10,7 @@ yarn.lock
 
 # Uploads and temporary files
 uploads/
+backups/
 *.log
 *.log.*
 
@@ -35,7 +36,11 @@ pgdata/
 coverage/
 .nyc_output/
 
-# Misc
+Misc
 .cache/
 temp/
 tmp/
+
+# Google Drive credentials and tokens
+.google-drive-credentials.json
+.google-drive-token.json

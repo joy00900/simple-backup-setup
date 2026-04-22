@@ -3,9 +3,16 @@ const { Pool } = require("pg");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+require("dotenv").config();
 
 const app = express();
 app.use(express.json());
+
+// Initialize backup scheduler if enabled
+if (process.env.ENABLE_BACKUP === 'true') {
+  const { initializeBackupScheduler } = require("./scripts/backup-scheduler");
+  initializeBackupScheduler();
+}
 
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");

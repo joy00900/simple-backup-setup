@@ -16,9 +16,12 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=testdb
-    command: npm run dev
-
-  db:
+      - ENABLE_BACKUP=true
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-root}
+    volumes:
+      - .:/app
+      - ./uploads:/app/uploads   # bind mount for images
+      - ./backups:/app/backups    # bind mount for backups
     image: postgres:15
     container_name: postgres_db
     restart: always
